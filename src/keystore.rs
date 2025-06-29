@@ -2,15 +2,16 @@ use std::{
     collections::{btree_map::Iter, BTreeMap},
     fmt,
 };
-
-use der::{asn1::OctetString, Decode, Encode};
+use cms::content_info::ContentInfo;
+use der::oid::ObjectIdentifier;
+use der::{asn1::OctetString, Any, Decode, Encode};
 use pkcs12::{
     authenticated_safe::AuthenticatedSafe,
     pfx::{Pfx, Version},
 };
 
 use crate::codec::ParsedAuthSafe;
-use crate::{codec, error::Error, oid};
+use crate::{codec, error::Error, oid, Result};
 
 /// X.509 certificate wrapper
 #[derive(Clone, PartialEq, Eq)]
@@ -211,17 +212,17 @@ impl KeyStore {
     }
 
     // Create keystore writer with a given password to use for data encryption
-    // pub fn writer<'a, 'b>(&'a self, password: &'b str) -> Pkcs12Writer<'a, 'b> {
-    //     // default values are taken from JVM java.security config file
-    //     Pkcs12Writer {
-    //         keystore: self,
-    //         password,
-    //         encryption_algorithm: EncryptionAlgorithm::PbeWithHmacSha256AndAes256,
-    //         encryption_iterations: 10000,
-    //         mac_algorithm: MacAlgorithm::HmacSha256,
-    //         mac_iterations: 10000,
-    //     }
-    // }
+    pub fn writer<'a, 'b>(&'a self, password: &'b str) -> Pkcs12Writer<'a, 'b> {
+        // default values are taken from JVM java.security config file
+        Pkcs12Writer {
+            keystore: self,
+            password,
+            encryption_algorithm: EncryptionAlgorithm::PbeWithHmacSha256AndAes256,
+            encryption_iterations: 10000,
+            mac_algorithm: MacAlgorithm::HmacSha256,
+            mac_iterations: 10000,
+        }
+    }
 
     // Get entries iterator
     pub fn entries(&self) -> Entries {
@@ -269,153 +270,153 @@ impl KeyStore {
 }
 
 // Encryption algorithm to use when creating the PKCS#12 file
-// #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-// #[non_exhaustive]
-// pub enum EncryptionAlgorithm {
-//     PbeWithHmacSha256AndAes256,
-//     PbeWithShaAnd40BitRc4Cbc,
-//     PbeWithShaAnd3KeyTripleDesCbc,
-// }
-//
-// impl EncryptionAlgorithm {
-//     pub(crate) fn as_oid(&self) -> ObjectIdentifier {
-//         match self {
-//             EncryptionAlgorithm::PbeWithHmacSha256AndAes256 => oid::PBES2_OID,
-//             EncryptionAlgorithm::PbeWithShaAnd40BitRc4Cbc => oid::PBE_WITH_SHA_AND_40BIT_RC2_CBC_OID,
-//             EncryptionAlgorithm::PbeWithShaAnd3KeyTripleDesCbc => oid::PBE_WITH_SHA_AND3_KEY_TRIPLE_DES_CBC_OID,
-//         }
-//     }
-// }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub enum EncryptionAlgorithm {
+    PbeWithHmacSha256AndAes256,
+    PbeWithShaAnd40BitRc4Cbc,
+    PbeWithShaAnd3KeyTripleDesCbc,
+}
+
+impl EncryptionAlgorithm {
+    pub(crate) fn as_oid(&self) -> ObjectIdentifier {
+        match self {
+            EncryptionAlgorithm::PbeWithHmacSha256AndAes256 => oid::PBES2_OID,
+            EncryptionAlgorithm::PbeWithShaAnd40BitRc4Cbc => oid::PBE_WITH_SHA_AND_40BIT_RC2_CBC_OID,
+            EncryptionAlgorithm::PbeWithShaAnd3KeyTripleDesCbc => oid::PBE_WITH_SHA_AND3_KEY_TRIPLE_DES_CBC_OID,
+        }
+    }
+}
 
 // MAC algorithm to use when creating the PKCS#12 file
-// #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-// #[non_exhaustive]
-// pub enum MacAlgorithm {
-//     HmacSha1,
-//     HmacSha256,
-// }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub enum MacAlgorithm {
+    HmacSha1,
+    HmacSha256,
+}
 
-// pub struct Pkcs12Writer<'a, 'b> {
-//     keystore: &'a KeyStore,
-//     password: &'b str,
-//     encryption_algorithm: EncryptionAlgorithm,
-//     encryption_iterations: u64,
-//     mac_algorithm: MacAlgorithm,
-//     mac_iterations: u64,
-// }
+pub struct Pkcs12Writer<'a, 'b> {
+    keystore: &'a KeyStore,
+    password: &'b str,
+    encryption_algorithm: EncryptionAlgorithm,
+    encryption_iterations: u64,
+    mac_algorithm: MacAlgorithm,
+    mac_iterations: u64,
+}
 
-// impl Pkcs12Writer<'_, '_> {
-//     /// Set encryption algorithm. Default is [EncryptionAlgorithm::PbeWithHmacSha256AndAes256]
-//     pub fn encryption_algorithm(mut self, algorithm: EncryptionAlgorithm) -> Self {
-//         self.encryption_algorithm = algorithm;
-//         self
-//     }
-//
-//     /// Set encryption iterations. Default is 10000
-//     pub fn encryption_iterations(mut self, iterations: u64) -> Self {
-//         self.encryption_iterations = iterations;
-//         self
-//     }
-//
-//     /// Set MAC algorithm. Default is [MacAlgorithm::HmacSha256]
-//     pub fn mac_algorithm(mut self, algorithm: MacAlgorithm) -> Self {
-//         self.mac_algorithm = algorithm;
-//         self
-//     }
-//
-//     /// Set MAC iterations. Default is 10000
-//     pub fn mac_iterations(mut self, iterations: u64) -> Self {
-//         self.mac_iterations = iterations;
-//         self
-//     }
-//
-//     /// Write keystore into PKCS#12 format
-//     pub fn write(self) -> Result<Vec<u8>> {
-//         let mut cert_bags = Vec::new();
-//
-//         let certs = self.keystore.entries.iter().filter_map(|(alias, entry)| match entry {
-//             KeyStoreEntry::PrivateKeyChain(_) => None,
-//             KeyStoreEntry::Certificate(cert) => Some((alias, cert)),
-//         });
-//
-//         for (alias, cert) in certs {
-//             cert_bags.push(codec::certificate_to_safe_bag(cert, alias, None, true)?);
-//         }
-//
-//         let chain_certs = self
-//             .keystore
-//             .entries
-//             .iter()
-//             .filter_map(|(_, entry)| match entry {
-//                 KeyStoreEntry::PrivateKeyChain(chain) => Some(chain.chain.iter().enumerate().map(|(i, c)| {
-//                     (
-//                         if i == 0 {
-//                             Some(chain.local_key_id.as_slice())
-//                         } else {
-//                             None
-//                         },
-//                         c,
-//                     )
-//                 })),
-//                 KeyStoreEntry::Certificate(_) => None,
-//             })
-//             .flatten();
-//
-//         for (local_key_id, cert) in chain_certs {
-//             cert_bags.push(codec::certificate_to_safe_bag(
-//                 cert,
-//                 &cert.subject,
-//                 local_key_id,
-//                 false,
-//             )?);
-//         }
-//
-//         let certs_safe = codec::cert_bags_to_auth_safe(
-//             cert_bags,
-//             self.encryption_algorithm,
-//             self.encryption_iterations,
-//             self.password,
-//         )?;
-//
-//         let private_keys = self.keystore.entries.iter().filter_map(|(alias, entry)| match entry {
-//             KeyStoreEntry::PrivateKeyChain(chain) => Some((alias, chain)),
-//             KeyStoreEntry::Certificate(_) => None,
-//         });
-//
-//         let mut key_bags = Vec::new();
-//
-//         for (alias, chain) in private_keys {
-//             key_bags.push(codec::private_key_to_safe_bag(
-//                 chain,
-//                 alias,
-//                 self.encryption_algorithm,
-//                 self.encryption_iterations,
-//                 self.password,
-//             )?);
-//         }
-//
-//         let keys_safe = codec::key_bags_to_auth_safe(key_bags)?;
-//
-//         let safes = OctetString::new(vec![certs_safe, keys_safe].to_der()?)?;
-//
-//         let auth_safe = ContentInfo {
-//             content_type: oid::CONTENT_TYPE_DATA_OID,
-//             content: Any::from_der(&safes.to_der()?)?,
-//         };
-//
-//         let mac_data = codec::compute_mac(
-//             auth_safe.content.value(),
-//             self.mac_algorithm,
-//             self.mac_iterations,
-//             self.password,
-//         )?;
-//
-//         let pfx = Pfx {
-//             version: Version::V3,
-//             auth_safe,
-//             mac_data: Some(mac_data),
-//         };
-//
-//         Ok(pfx.to_der()?)
-//     }
-// }
+impl Pkcs12Writer<'_, '_> {
+    /// Set encryption algorithm. Default is [EncryptionAlgorithm::PbeWithHmacSha256AndAes256]
+    pub fn encryption_algorithm(mut self, algorithm: EncryptionAlgorithm) -> Self {
+        self.encryption_algorithm = algorithm;
+        self
+    }
+
+    /// Set encryption iterations. Default is 10000
+    pub fn encryption_iterations(mut self, iterations: u64) -> Self {
+        self.encryption_iterations = iterations;
+        self
+    }
+
+    /// Set MAC algorithm. Default is [MacAlgorithm::HmacSha256]
+    pub fn mac_algorithm(mut self, algorithm: MacAlgorithm) -> Self {
+        self.mac_algorithm = algorithm;
+        self
+    }
+
+    /// Set MAC iterations. Default is 10000
+    pub fn mac_iterations(mut self, iterations: u64) -> Self {
+        self.mac_iterations = iterations;
+        self
+    }
+
+    /// Write keystore into PKCS#12 format
+    pub fn write(self) -> Result<Vec<u8>> {
+        let mut cert_bags = Vec::new();
+
+        let certs = self.keystore.entries.iter().filter_map(|(alias, entry)| match entry {
+            KeyStoreEntry::PrivateKeyChain(_) => None,
+            KeyStoreEntry::Certificate(cert) => Some((alias, cert)),
+        });
+
+        for (alias, cert) in certs {
+            cert_bags.push(codec::certificate_to_safe_bag(cert, alias, None, true)?);
+        }
+
+        let chain_certs = self
+            .keystore
+            .entries
+            .iter()
+            .filter_map(|(_, entry)| match entry {
+                KeyStoreEntry::PrivateKeyChain(chain) => Some(chain.chain.iter().enumerate().map(|(i, c)| {
+                    (
+                        if i == 0 {
+                            Some(chain.local_key_id.as_slice())
+                        } else {
+                            None
+                        },
+                        c,
+                    )
+                })),
+                KeyStoreEntry::Certificate(_) => None,
+            })
+            .flatten();
+
+        for (local_key_id, cert) in chain_certs {
+            cert_bags.push(codec::certificate_to_safe_bag(
+                cert,
+                &cert.subject,
+                local_key_id,
+                false,
+            )?);
+        }
+
+        let certs_safe = codec::cert_bags_to_auth_safe(
+            cert_bags,
+            self.encryption_algorithm,
+            self.encryption_iterations,
+            self.password,
+        )?;
+
+        let private_keys = self.keystore.entries.iter().filter_map(|(alias, entry)| match entry {
+            KeyStoreEntry::PrivateKeyChain(chain) => Some((alias, chain)),
+            KeyStoreEntry::Certificate(_) => None,
+        });
+
+        let mut key_bags = Vec::new();
+
+        for (alias, chain) in private_keys {
+            key_bags.push(codec::private_key_to_safe_bag(
+                chain,
+                alias,
+                self.encryption_algorithm,
+                self.encryption_iterations,
+                self.password,
+            )?);
+        }
+
+        let keys_safe = codec::key_bags_to_auth_safe(key_bags)?;
+
+        let safes = OctetString::new(vec![certs_safe, keys_safe].to_der()?)?;
+
+        let auth_safe = ContentInfo {
+            content_type: oid::CONTENT_TYPE_DATA_OID,
+            content: Any::from_der(&safes.to_der()?)?,
+        };
+
+        let mac_data = codec::compute_mac(
+            auth_safe.content.value(),
+            self.mac_algorithm,
+            self.mac_iterations,
+            self.password,
+        )?;
+
+        let pfx = Pfx {
+            version: Version::V3,
+            auth_safe,
+            mac_data: Some(mac_data),
+        };
+
+        Ok(pfx.to_der()?)
+    }
+}
