@@ -24,11 +24,11 @@ pub struct Certificate {
 impl Certificate {
     /// Create certificate from DER encoding
     pub fn from_der(der: &[u8]) -> crate::Result<Self> {
-        let (_, cert) = x509_parser::parse_x509_certificate(der)?;
+        let cert = x509_cert::Certificate::from_der(der)?;
         Ok(Self {
             data: der.to_vec(),
-            subject: cert.subject.to_string(),
-            issuer: cert.issuer.to_string(),
+            subject: cert.tbs_certificate.subject.to_string(),
+            issuer: cert.tbs_certificate.issuer.to_string(),
         })
     }
 

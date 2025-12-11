@@ -4,7 +4,6 @@
 use std::io;
 
 use hmac::digest::MacError;
-use x509_parser::error::X509Error;
 
 /// Possible errors for keystore operations
 #[derive(Debug, thiserror::Error)]
@@ -23,9 +22,6 @@ pub enum Error {
 
     #[error("Unsupported certiticate type")]
     UnsupportedCertificateType,
-
-    #[error(transparent)]
-    X509Error(#[from] x509_parser::nom::Err<X509Error>),
 
     #[error("Invalid length")]
     InvalidLength,
